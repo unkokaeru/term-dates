@@ -6,7 +6,7 @@ import re
 from collections.abc import Iterable
 from datetime import date, datetime
 
-from dateutil import parser as dateparser
+from dateutil import parser as dateparser  # type: ignore[import-untyped]
 
 # Defaults need to be datetimes for dateutil's `default=` argument.
 _DEFAULT_PIVOT = datetime(1900, 1, 1)
@@ -74,7 +74,9 @@ def parse_uk_date(text: str, default_year: int | None = None) -> date | None:
         return None
     if isinstance(parsed, datetime):
         return parsed.date()
-    return parsed  # type: ignore[unreachable]
+    if isinstance(parsed, date):
+        return parsed
+    return None
 
 
 _MONTHS: dict[str, int] = {
@@ -129,6 +131,18 @@ def academic_year_for(d: date) -> str:
     if d.month >= 9:
         return f"{d.year}/{d.year + 1}"
     return f"{d.year - 1}/{d.year}"
+
+
+def current_academic_year_start(today: date | None = None) -> int:
+    """Return the September-start year of the academic year containing ``today``.
+
+    On 2026-04-26 this returns 2025 (we are inside 2025/2026). Used as a sane
+    default-year for parsers that may encounter yearless dates.
+    """
+    if today is None:
+        from datetime import date as _date  # local to keep top-level import light
+        today = _date.today()
+    return today.year if today.month >= 9 else today.year - 1
 
 
 # Match anywhere "INSET", "PD day", "Inset day", "Training day", "Staff training",

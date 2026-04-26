@@ -6,14 +6,25 @@ drop-down.
 
 The package is built so that:
 
-* Every English LEA the registry knows about (≈150) is browsable from a
-  drop-down. Only LEAs with a registered provider can currently be *fetched* —
-  contributing more is just a new `LEAProvider` subclass.
+* Every English LEA the registry knows about (≈150) is browsable and
+  fetchable. Each LEA gets a provider in one of two tiers:
+  **curated** (hand-rolled parser, currently just Lincolnshire) or
+  **generic / best-effort** (auto-registered for every LEA that publishes
+  a URL — extracts events from tables, lists, or PDF links using shared
+  heuristics). Curated providers are marked `custom`; generics are `auto`
+  in the CLI/UI.
 * Per-school PD/INSET days are scraped from each school's own website (LEAs
-  publish term-skeletons, but PD days vary per school).
+  publish term-skeletons, but PD days vary per school). Schools without a
+  curated provider but with a website fall back to a generic PD-day prober
+  that visits common term-date paths (`/term-dates/`, `/parents/term-dates/`
+  etc.) and extracts whatever it can — including PDFs.
 * The first worked example is **Lincolnshire**, with PD-day providers for
   three schools in the **City of Lincoln** (The Priory City of Lincoln Academy,
   Lincoln Christ's Hospital School, Lincoln Carlton Academy).
+* Many councils publish term dates as PDFs or behind WAFs; the package uses
+  `pypdf` for PDF text extraction and a real-browser User-Agent. Generic
+  providers will fail gracefully (returning an empty result) on
+  JavaScript-rendered pages or pages whose URL has rotted.
 
 ## Installation
 
@@ -21,15 +32,47 @@ The package is built so that:
 pip install -e ".[dev]"
 ```
 
-## CLI usage
+## Quick start — the interactive UI
+
+```bash
+term-dates ui
+```
+
+This launches a three-pane Textual terminal UI:
+
+```
+┌─ LEAs ──────┬─ Schools ──┬─ Calendar ──────────────────────────────┐
+│ ● Lincolns… │ ★ Lincoln… │ 2025-09-04  Thu  term_start  Term 1 …   │
+│ · Derby     │ ★ Lincoln… │ 2025-10-23  Thu  term_end    Term 1 …   │
+│ · Derbyshi… │ ★ The Pri… │ 2025-10-24  Fri  half_term…  Half term  │
+│ ...         │            │ ...                                     │
+└─────────────┴────────────┴─────────────────────────────────────────┘
+```
+
+* Type to filter the focused column live.
+* Pick an LEA (left) → schools refresh (middle).
+* Pick a school → its calendar fetches (right) with LEA term dates +
+  per-school PD/INSET days, colour-coded by event kind.
+* `q` to quit, `/` to jump to the search box, `ctrl+r` to reload.
+
+To browse every English school instead of the bundled-provider sample, pass
+the GIAS establishments CSV:
+
+```bash
+term-dates ui --gias-csv ~/data/edubasealldata.csv
+```
+
+## Scripted CLI usage
 
 ```bash
 # 1. Browse the registry (drop-down equivalents are non-interactive here):
 term-dates list-leas
-term-dates list-leas --implemented-only
+term-dates list-leas --implemented-only      # custom + generic
+term-dates list-leas --custom-only            # curated only
 
 # 2. Aggregate term dates across every LEA that has a provider:
-term-dates aggregate
+term-dates aggregate                          # curated + generic best-effort
+term-dates aggregate --custom-only            # curated only (faster)
 term-dates aggregate --lea Lincolnshire
 
 # 3. Pick a school (drop-down) and print its full calendar:
@@ -167,6 +210,13 @@ combines the three Lincoln-school providers.
   bundled HTTP client sends a realistic browser User-Agent and retries with
   exponential back-off; you may still need to run from a residential IP for
   some sources.
+* Schools commonly publish term dates as PDFs. The package extracts text via
+  `pypdf` (pure Python). Some PDFs are visually-formatted calendar grids
+  with INSET days indicated only by colour — these cannot be reliably mined
+  from the text layer; the relevant provider returns "none found" in that
+  case rather than failing.
+* When a school publishes multiple year files, the provider prefers the
+  current academic year (Sep→Aug), falling back to the most recent.
 * This project is unaffiliated with the Department for Education or any LEA.
 
 ## License

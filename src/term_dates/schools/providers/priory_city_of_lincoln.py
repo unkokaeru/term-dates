@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from term_dates.models import PDDay, School, SchoolPhase
+from term_dates.parsing import current_academic_year_start
 from term_dates.schools._extract import extract_pd_days, html_to_text
 from term_dates.schools.base import PDDayProvider
 
@@ -28,9 +29,9 @@ class PrioryCityOfLincolnProvider(PDDayProvider):
         html = self.fetcher.get_text(URL)
         return self.parse(html)
 
-    def parse(self, html: str) -> tuple[PDDay, ...]:
+    def parse(self, html: str, *, default_year: int | None = None) -> tuple[PDDay, ...]:
         return extract_pd_days(
             html_to_text(html),
-            default_year=2025,
+            default_year=default_year or current_academic_year_start(),
             source_label="Priory City",
         )

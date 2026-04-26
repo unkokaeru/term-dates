@@ -42,11 +42,23 @@ class Fetcher:
             cached = self.cache.get(url)
             if cached is not None:
                 return cached
-        body = self._get(url)
+        response = self._get(url)
+        body = response.text
         self.cache.set(url, body)
         return body
 
-    def _get(self, url: str) -> str:
+    def get_bytes(self, url: str, *, force_refresh: bool = False) -> bytes:
+        """Fetch a URL as raw bytes (for binary content like PDFs)."""
+        if not force_refresh:
+            cached = self.cache.get_bytes(url)
+            if cached is not None:
+                return cached
+        response = self._get(url)
+        body = response.content
+        self.cache.set_bytes(url, body)
+        return body
+
+    def _get(self, url: str) -> httpx.Response:
         last_exc: Exception | None = None
         for attempt in range(self.retries):
             try:
@@ -57,14 +69,14 @@ class Fetcher:
                         "User-Agent": self.user_agent,
                         "Accept": (
                             "text/html,application/xhtml+xml,application/xml;q=0.9,"
-                            "*/*;q=0.8"
+                            "application/pdf;q=0.9,*/*;q=0.8"
                         ),
                         "Accept-Language": "en-GB,en;q=0.9",
                     },
                 ) as client:
                     response = client.get(url)
                 response.raise_for_status()
-                return response.text
+                return response
             except httpx.HTTPError as exc:
                 last_exc = exc
                 if attempt + 1 < self.retries:
