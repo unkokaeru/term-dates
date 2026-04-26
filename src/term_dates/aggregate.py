@@ -6,8 +6,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from term_dates.http import Fetcher
-from term_dates.lea import all_leas, get_provider
-from term_dates.models import LEA, PDDay, School, SchoolCalendar, TermDates
+from term_dates.lea import LEAProvider, all_leas, get_provider
+from term_dates.models import LEA, AcademicEvent, PDDay, School, SchoolCalendar, TermDates
 from term_dates.schools import get_pd_provider
 from term_dates.schools.gias import GIASSchoolDirectory
 
@@ -50,7 +50,7 @@ def aggregate_all_leas(
     skipped: list[str] = []
     failures: dict[str, str] = {}
 
-    runnable: list[tuple[LEA, object]] = []
+    runnable: list[tuple[LEA, LEAProvider]] = []
     for lea in leas:
         provider = get_provider(lea, fetcher=fetcher)
         if provider is None:
@@ -83,7 +83,7 @@ def build_school_calendar(
     """Combine a school's LEA term dates with school-specific PD days."""
     fetcher = fetcher or Fetcher.default()
 
-    lea_events: tuple = ()
+    lea_events: tuple[AcademicEvent, ...] = ()
     sources: list[str] = []
 
     # LEA-level events ---------------------------------------------------
@@ -99,7 +99,7 @@ def build_school_calendar(
 
     # School-specific PD days --------------------------------------------
     pd_days: tuple[PDDay, ...] = ()
-    pd_provider = get_pd_provider(school.urn, fetcher=fetcher)
+    pd_provider = get_pd_provider(school.urn, school=school, fetcher=fetcher)
     if pd_provider is not None:
         try:
             pd_days = pd_provider.fetch()

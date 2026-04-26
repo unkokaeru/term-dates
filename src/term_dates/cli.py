@@ -16,7 +16,12 @@ from term_dates.aggregate import (
     build_school_calendar,
 )
 from term_dates.http import Fetcher
-from term_dates.lea import all_leas, find_lea, implemented_lea_names
+from term_dates.lea import (
+    all_leas,
+    custom_lea_names,
+    find_lea,
+    implemented_lea_names,
+)
 from term_dates.models import LEA, School, SchoolCalendar
 from term_dates.schools.gias import GIASSchoolDirectory
 from term_dates.schools.registry import SCHOOL_PD_PROVIDERS, pd_providers_for_lea
@@ -106,29 +111,39 @@ def list_leas(
     implemented_only: bool = typer.Option(
         False, "--implemented-only", help="Only list LEAs with a provider"
     ),
+    custom_only: bool = typer.Option(
+        False, "--custom-only", help="Only list LEAs with a curated parser"
+    ),
 ) -> None:
     """List every English LEA the registry knows about."""
     leas: Iterable[LEA] = all_leas()
+    impl = set(implemented_lea_names())
+    custom = set(custom_lea_names())
     if implemented_only:
-        names = set(implemented_lea_names())
-        leas = (lea for lea in leas if lea.name in names)
+        leas = (lea for lea in leas if lea.name in impl)
+    if custom_only:
+        leas = (lea for lea in leas if lea.name in custom)
     table = Table(title="English Local Education Authorities")
     table.add_column("Name", style="bold")
     table.add_column("Region")
-    table.add_column("Provider?")
+    table.add_column("Provider")
     table.add_column("URL")
-    impl = set(implemented_lea_names())
     count = 0
     for lea in leas:
-        table.add_row(
-            lea.name,
-            lea.region,
-            "[green]yes[/green]" if lea.name in impl else "-",
-            lea.term_dates_url or "",
-        )
+        if lea.name in custom:
+            tag = "[green]custom[/green]"
+        elif lea.name in impl:
+            tag = "[cyan]auto[/cyan]"
+        else:
+            tag = "[dim]-[/dim]"
+        table.add_row(lea.name, lea.region, tag, lea.term_dates_url or "")
         count += 1
     console.print(table)
-    console.print(f"[dim]Total: {count} LEAs ({len(impl)} with providers).[/dim]")
+    console.print(
+        f"[dim]Total: {count} LEAs · {len(custom)} curated · "
+        f"{len(impl) - len(custom)} generic best-effort · "
+        f"{len([lea for lea in all_leas() if lea.name not in impl])} unimplemented.[/dim]"
+    )
 
 
 @app.command("aggregate")
@@ -137,14 +152,22 @@ def aggregate(
         None, "--lea", help="Limit to one or more LEA names (repeatable)."
     ),
     workers: int = typer.Option(8, help="Concurrent fetches."),
+    custom_only: bool = typer.Option(
+        False,
+        "--custom-only",
+        help="Only run curated providers (faster; skips generic best-effort).",
+    ),
 ) -> None:
-    """Aggregate term dates from every LEA that has a provider."""
+    """Aggregate term dates from every LEA with a provider (curated + generic)."""
     fetcher = Fetcher.default()
-    result = aggregate_all_leas(
-        fetcher=fetcher,
-        max_workers=workers,
-        only=tuple(only) if only else None,
-    )
+    if custom_only and only is None:
+        only = list(custom_lea_names())
+    with console.status("[cyan]Fetching LEA term dates…[/cyan]"):
+        result = aggregate_all_leas(
+            fetcher=fetcher,
+            max_workers=workers,
+            only=tuple(only) if only else None,
+        )
     _print_aggregate(result)
 
 
@@ -239,6 +262,24 @@ def schools_in_lea(
         )
     console.print(table)
     console.print(f"[dim]{len(schools)} schools.[/dim]")
+
+
+@app.command("ui")
+def ui_cmd(
+    gias_csv: Path | None = typer.Option(
+        None,
+        "--gias-csv",
+        help="Path to a GIAS establishments CSV; without this the UI uses the "
+        "bundled provider-registered schools only.",
+        exists=True,
+        readable=True,
+    ),
+) -> None:
+    """Launch the interactive terminal UI (LEAs → schools → calendar)."""
+    from term_dates.ui import run as run_ui
+
+    directory = _load_directory(gias_csv)
+    run_ui(directory)
 
 
 @app.command("pd-days")
